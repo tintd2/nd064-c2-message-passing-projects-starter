@@ -150,3 +150,35 @@ Your architecture diagram should focus on the services and how they talk to one 
 ## Tips
 * We can access a running Docker container using `kubectl exec -it <pod_id> sh`. From there, we can `curl` an endpoint to debug network issues.
 * The starter project uses Python Flask. Flask doesn't work well with `asyncio` out-of-the-box. Consider using `multiprocessing` to create threads for asynchronous behavior in a standard Flask application.
+
+
+
+To create a pod that you can use as a Kafka client run the following commands:
+
+kubectl run my-kafka-client --restart='Never' --image docker.io/bitnami/kafka:3.5.1-debian-11-r72 --namespace default --command -- sleep infinity
+kubectl cp --namespace default client.properties my-kafka-client:/tmp/client.properties
+kubectl exec --tty -i my-kafka-client --namespace default -- bash
+
+PRODUCER:
+    kafka-console-producer.sh \
+        --producer.config /tmp/client.properties \
+        --broker-list my-kafka-controller-0.my-kafka-controller-headless.default.svc.cluster.local:9092,my-kafka-controller-1.my-kafka-controller-headless.default.svc.cluster.local:9092,my-kafka-controller-2.my-kafka-controller-headless.default.svc.cluster.local:9092 \
+        --topic test
+
+CONSUMER:
+    kafka-console-consumer.sh \
+        --consumer.config /tmp/client.properties \
+        --bootstrap-server my-kafka.default.svc.cluster.local:9092 \
+        --topic test \
+        --from-beginning
+
+# Create topic
+    kubectl exec -it $POD_NAME -- kafka-topics.sh \
+        --create --bootstrap-server $BOOTSTRAP_SERVER:9092 \
+        --replication-factor 1 --partitions 1 \
+        --topic $TOPIC
+    ```
+
+export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=kafka,app.kubernetes.io/instance=udaconnect-kafka" -o jsonpath="{.items[0].metadata.name}")
+
+    export BOOTSTRAP_SERVER=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=kafka,app.kubernetes.io/instance=udaconnect-kafka" -o jsonpath="{.items[0].spec.subdomain}")
