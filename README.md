@@ -96,6 +96,9 @@ These pages should also load on your web browser:
 * `http://localhost:30001/` - OpenAPI Documentation
 * `http://localhost:30001/api/` - Base path for API
 * `http://localhost:30000/` - Frontend ReactJS Application
+* `http://localhost:30002/` - OpenAPI Documentation for legacy API Person
+* `http://localhost:30002/api` - Base path for API Person
+
 
 #### Deployment Note
 You may notice the odd port numbers being served to `localhost`. [By default, Kubernetes services are only exposed to one another in an internal network](https://kubernetes.io/docs/concepts/services-networking/service/). This means that `udaconnect-app` and `udaconnect-api` can talk to one another. For us to connect to the cluster as an "outsider", we need to a way to expose these services to `localhost`.
@@ -151,34 +154,83 @@ Your architecture diagram should focus on the services and how they talk to one 
 * We can access a running Docker container using `kubectl exec -it <pod_id> sh`. From there, we can `curl` an endpoint to debug network issues.
 * The starter project uses Python Flask. Flask doesn't work well with `asyncio` out-of-the-box. Consider using `multiprocessing` to create threads for asynchronous behavior in a standard Flask application.
 
+###STEP
+1. `helm install my-release oci://registry-1.docker.io/bitnamicharts/kafka` install kafka using helm
+You will see something like after install success:
+    Pulled: registry-1.docker.io/bitnamicharts/kafka:26.0.0
+    Digest: sha256:86c0f492e91b5c7e13ea26b24a3a44ebb8d5fc8d65d81eaa48dd17fd086a7924
+    NAME: kafka-chart
+    LAST DEPLOYED: Wed Oct 18 13:58:37 2023
+    NAMESPACE: default
+    STATUS: deployed
+    REVISION: 1
+    TEST SUITE: None
+    NOTES:
+    CHART NAME: kafka
+    CHART VERSION: 26.0.0
+    APP VERSION: 3.6.0
 
+** Please be patient while the chart is being deployed **
+
+Kafka can be accessed by consumers via port 9092 on the following DNS name from within your cluster:
+
+    kafka-chart.default.svc.cluster.local
+
+Each Kafka broker can be accessed by producers via port 9092 on the following DNS name(s) from within your cluster:
+
+    kafka-chart-controller-0.kafka-chart-controller-headless.default.svc.cluster.local:9092
+    kafka-chart-controller-1.kafka-chart-controller-headless.default.svc.cluster.local:9092
+    kafka-chart-controller-2.kafka-chart-controller-headless.default.svc.cluster.local:9092
+
+The CLIENT listener for Kafka client connections from within your cluster have been configured with the following security settings:
+    - SASL authentication
+
+To connect a client to your Kafka, you need to create the 'client.properties' configuration files with the content below:
+
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+    username="user1" \
+    password="$(kubectl get secret kafka-chart-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -d | cut -d , -f 1)";
 
 To create a pod that you can use as a Kafka client run the following commands:
 
-kubectl run my-kafka-client --restart='Never' --image docker.io/bitnami/kafka:3.5.1-debian-11-r72 --namespace default --command -- sleep infinity
-kubectl cp --namespace default client.properties my-kafka-client:/tmp/client.properties
-kubectl exec --tty -i my-kafka-client --namespace default -- bash
+    kubectl run kafka-chart-client --restart='Never' --image docker.io/bitnami/kafka:3.6.0-debian-11-r0 --namespace default --command -- sleep infinity
+    kubectl cp --namespace default /path/to/client.properties kafka-chart-client:/tmp/client.properties
+    kubectl exec --tty -i kafka-chart-client --namespace default -- bash
 
-PRODUCER:
-    kafka-console-producer.sh \
-        --producer.config /tmp/client.properties \
-        --broker-list my-kafka-controller-0.my-kafka-controller-headless.default.svc.cluster.local:9092,my-kafka-controller-1.my-kafka-controller-headless.default.svc.cluster.local:9092,my-kafka-controller-2.my-kafka-controller-headless.default.svc.cluster.local:9092 \
-        --topic test
+    PRODUCER:
+        kafka-console-producer.sh \
+            --producer.config /tmp/client.properties \
+            --broker-list kafka-chart-controller-0.kafka-chart-controller-headless.default.svc.cluster.local:9092,kafka-chart-controller-1.kafka-chart-controller-headless.default.svc.cluster.local:9092,kafka-chart-controller-2.kafka-chart-controller-headless.default.svc.cluster.local:9092 \
+            --topic location-data
 
-CONSUMER:
-    kafka-console-consumer.sh \
-        --consumer.config /tmp/client.properties \
-        --bootstrap-server my-kafka.default.svc.cluster.local:9092 \
-        --topic test \
-        --from-beginning
+    CONSUMER:
+        kafka-console-consumer.sh \
+            --consumer.config /tmp/client.properties \
+            --bootstrap-server kafka-chart.default.svc.cluster.local:9092 \
+            --topic location-data \
+            --from-beginning
+2. `kubectl apply -f deployment/db-configmap.yaml` deploy database environment.
+3. `kubectl apply -f deployment/db-secret.yaml` deploy database secret.
+4. Update KAFKA_PASSWORD at kafka-configmap.yaml by command below:
+    `kubectl get secret kafka-chart-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -D`
+5. `kubectl apply -f deployment/kafka-configmap.yaml` deploy kafka environtment.
+6. `kubectl apply -f deployment/postgres.yaml` - Deploy database.
+7. `kubectl apply -f deployment/udaconnect-api-connection.yaml` - deploy connection api.
+8. `kubectl apply -f deployment/udaconnect-api-person.yaml` - deploy person api.
+9. `kubectl apply -f deployment/udaconnect-app.yaml` - deploy frontend.
+10. `kubectl apply -f deployment/udaconnect-kafka-producer.yaml` - deploy frontend.
 
-# Create topic
-    kubectl exec -it $POD_NAME -- kafka-topics.sh \
-        --create --bootstrap-server $BOOTSTRAP_SERVER:9092 \
-        --replication-factor 1 --partitions 1 \
-        --topic $TOPIC
-    ```
-
-export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=kafka,app.kubernetes.io/instance=udaconnect-kafka" -o jsonpath="{.items[0].metadata.name}")
-
-    export BOOTSTRAP_SERVER=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=kafka,app.kubernetes.io/instance=udaconnect-kafka" -o jsonpath="{.items[0].spec.subdomain}")
+USEFULL COMMAND:
+`kubectl port-forward svc/postgres 5432:5432`
+`docker build -t dinhtin12/kafka-producer modules/kafka-producer/`
+`docker push dinhtin12/kafka-producer:latest`
+`kubectl delete deployment udaconnect-kafka-producer`
+`kubectl delete svc udaconnect-kafka-producer`
+`kubectl apply -f deployment/udaconnect-kafka-producer.yaml`
+`kubectl delete deployment udaconnect-app`
+`kubectl delete svc udaconnect-app`
+`docker images`
+`docker build -t dinhtin12/nd064-udaconnect-api-person modules/api-person/`
+`docker push dinhtin12/nd064-udaconnect-api-person` (create repo at docker registry before run this command)

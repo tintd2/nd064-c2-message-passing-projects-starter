@@ -1,40 +1,35 @@
-import json
+import grpc
+import location_pb2
+import location_pb2_grpc
 
-from kafka import KafkaProducer
-from flask import Flask, jsonify, request, g, Response
+from concurrent import futures
+from services import send_location
 
-from .services import retrieve_orders, create_order
+class LocationIngesterServicer(location_pb2_grpc.LocationServiceServicer):
+    def Create(self, request, context):
+        payload = {
+            "person_id": int(request.person_id),
+            "latitude": request.latitude,
+            "longitude": request.longitude
+        }
 
-app = Flask(__name__)
+        print(f"Payload:{payload} ")
 
-@app.before_request
-def before_request():
-    # Set up a Kafka producer
-    TOPIC_NAME = 'items'
-    # host.docker.internal (for use host service)
-    KAFKA_SERVER = 'host.docker.internal:9092'
-    producer = KafkaProducer(bootstrap_servers=KAFKA_SERVER)
-    # Setting Kafka to g enables us to use this
-    # in other parts of our application
-    g.kafka_producer = producer
+        send_location(payload)
+        return location_pb2.LocationMessage(**payload)
 
+# Intiialize gRPC server
+server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+location_pb2_grpc.add_LocationServiceServicer_to_server(LocationIngesterServicer(), server)
 
-@app.route('/health')
-def health():
-    return jsonify({'response': 'Hello World!'})
+print("Starting gRPC server on port 5005...")
+server.add_insecure_port("[::]:5005")
+server.start()
 
-
-@app.route('/api/orders/computers', methods=['GET', 'POST'])
-def computers():
-    if request.method == 'GET':
-        return jsonify(retrieve_orders())
-    elif request.method == 'POST':
-        request_body = request.json
-        result = create_order(request_body)
-        return Response(status=202)
-    else:
-        raise Exception('Unsupported HTTP request type.')
-
-
-if __name__ == '__main__':
-    app.run()
+# Keep thread alive
+server.wait_for_termination()
+try:
+    while True:
+        time.sleep(86400)
+except KeyboardInterrupt:
+    server.stop(0)

@@ -4,10 +4,7 @@ This is a bare-bones Flask application that showcases how simple it can be to se
 Flask applications can look very different depending on how they are structured and implemented. This application is built to have the minimum number of dependencies to run.
 
 ## Running the app
-`python3 -m venv kafka-producer`
-`source kafka-producer/bin/activate`
+`python3 -m venv kafka-starter`
+`source kafka-starter/bin/activate`
 `pip install -r requirements.txt`
-
-2. Run the app: `flask run`
-
-The application should be available at `localhost:5000`.
+`python3 app.py`

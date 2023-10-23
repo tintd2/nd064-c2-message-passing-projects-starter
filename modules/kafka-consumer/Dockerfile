@@ -7,9 +7,7 @@ RUN pip3 install -r requirements.txt
 
 COPY . .
 
-EXPOSE 5000
-
-CMD [ "python3", "app.py" ]
+CMD [ "python3", "app.py"]
 
 # docker build -t dinhtin12/kafka-producer modules/kafka-producer/
 # docker run -d -p 5000:5000 --name kafka-producer dinhtin12/kafka-producer:latest

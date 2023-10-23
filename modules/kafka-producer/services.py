@@ -1,43 +1,30 @@
 import json
-from .app import g
-from .enums import Status
+import logging
+import os
 
+from kafka import KafkaProducer
+from typing import Dict
 
-def create_order(order_data):
-    """
-    This is a stubbed method of retrieving a resource. It doesn't actually do anything.
-    """
-    # Turn order_data into a binary string for Kafka
-    # kafka_data = json.dumps(order_data).encode()
-    # Kafka producer has already been set up in Flask context
-    # kafka_producer = g.kafka_producer
-    # TODO: send the data using kafka_producer using .send()
-    kafka_data = json.dumps(order_data).encode()
-    kafka_producer = g.kafka_producer
-    kafka_producer.send("items", kafka_data)
+TOPIC_NAME = os.environ["TOPIC_NAME"]
+KAFKA_SERVER = os.environ["KAFKA_SERVER"]
+KAFKA_PASSWORD = os.environ["KAFKA_PASSWORD"]
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("udaconnect-location-ingester-service")
 
-def retrieve_orders():
-    """
-    This is a stubbed method of retrieving multiple resources. It doesn't actually do anything.
-    """
-    return [
-        {
-            "id": "1",
-            "status": Status.Queued.value,
-            "created_at": "2020-10-16T10:31:10.969696",
-            "created_by": "USER14",
-            "equipment": [
-                "KEYBOARD", "MOUSE"
-            ]
-        },
-        {
-            "id": "2",
-            "status": Status.Queued.value,
-            "created_at": "2020-10-16T10:29:10.969696",
-            "created_by": "USER15",
-            "equipment": [
-                "KEYBOARD", "WEBCAM"
-            ]
-        }
-    ]
+# Create the kafka producer
+producer = KafkaProducer(
+    security_protocol="SASL_PLAINTEXT", 
+    sasl_mechanism="SCRAM-SHA-256", 
+    sasl_plain_username="user1", 
+    sasl_plain_password=KAFKA_PASSWORD, 
+    bootstrap_servers=KAFKA_SERVER
+)
+
+def send_location(location_data):
+    print(f"location_data: {location_data}")
+    encoded_data = json.dumps(location_data).encode('utf-8')
+    producer.send(TOPIC_NAME, encoded_data)
+    producer.flush()
+    logger.info(f"Sent to kafka successfully.")
