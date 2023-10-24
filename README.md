@@ -75,13 +75,74 @@ Type `exit` to exit the virtual OS and you will find yourself back in your compu
 
 Afterwards, you can test that `kubectl` works by running a command like `kubectl describe services`. It should not return any errors.
 
-### Steps
-1. `kubectl apply -f deployment/db-configmap.yaml` - Set up environment variables for the pods
-2. `kubectl apply -f deployment/db-secret.yaml` - Set up secrets for the pods
-3. `kubectl apply -f deployment/postgres.yaml` - Set up a Postgres database running PostGIS
-4. `kubectl apply -f deployment/udaconnect-api.yaml` - Set up the service and deployment for the API
-5. `kubectl apply -f deployment/udaconnect-app.yaml` - Set up the service and deployment for the web app
-6. `sh scripts/run_db_command.sh <POD_NAME>` - Seed your database against the `postgres` pod. (`kubectl get pods` will give you the `POD_NAME`)
+###STEP
+1. `helm install my-release oci://registry-1.docker.io/bitnamicharts/kafka` install kafka using helm
+You will see something like after install success:
+    Pulled: registry-1.docker.io/bitnamicharts/kafka:26.0.0
+    Digest: sha256:86c0f492e91b5c7e13ea26b24a3a44ebb8d5fc8d65d81eaa48dd17fd086a7924
+    NAME: kafka-chart
+    LAST DEPLOYED: Wed Oct 18 13:58:37 2023
+    NAMESPACE: default
+    STATUS: deployed
+    REVISION: 1
+    TEST SUITE: None
+    NOTES:
+    CHART NAME: kafka
+    CHART VERSION: 26.0.0
+    APP VERSION: 3.6.0
+
+** Please be patient while the chart is being deployed **
+
+Kafka can be accessed by consumers via port 9092 on the following DNS name from within your cluster:
+
+    kafka-chart.default.svc.cluster.local
+
+Each Kafka broker can be accessed by producers via port 9092 on the following DNS name(s) from within your cluster:
+
+    kafka-chart-controller-0.kafka-chart-controller-headless.default.svc.cluster.local:9092
+    kafka-chart-controller-1.kafka-chart-controller-headless.default.svc.cluster.local:9092
+    kafka-chart-controller-2.kafka-chart-controller-headless.default.svc.cluster.local:9092
+
+The CLIENT listener for Kafka client connections from within your cluster have been configured with the following security settings:
+    - SASL authentication
+
+To connect a client to your Kafka, you need to create the 'client.properties' configuration files with the content below:
+
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+    username="user1" \
+    password="$(kubectl get secret kafka-chart-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -d | cut -d , -f 1)";
+
+To create a pod that you can use as a Kafka client run the following commands:
+
+    kubectl run kafka-chart-client --restart='Never' --image docker.io/bitnami/kafka:3.6.0-debian-11-r0 --namespace default --command -- sleep infinity
+    kubectl cp --namespace default /path/to/client.properties kafka-chart-client:/tmp/client.properties
+    kubectl exec --tty -i kafka-chart-client --namespace default -- bash
+
+    PRODUCER:
+        kafka-console-producer.sh \
+            --producer.config /tmp/client.properties \
+            --broker-list kafka-chart-controller-0.kafka-chart-controller-headless.default.svc.cluster.local:9092,kafka-chart-controller-1.kafka-chart-controller-headless.default.svc.cluster.local:9092,kafka-chart-controller-2.kafka-chart-controller-headless.default.svc.cluster.local:9092 \
+            --topic location-data
+
+    CONSUMER:
+        kafka-console-consumer.sh \
+            --consumer.config /tmp/client.properties \
+            --bootstrap-server kafka-chart.default.svc.cluster.local:9092 \
+            --topic location-data \
+            --from-beginning
+2. `kubectl apply -f deployment/db-configmap.yaml` deploy database environment.
+3. `kubectl apply -f deployment/db-secret.yaml` deploy database secret.
+4. Update KAFKA_PASSWORD at kafka-configmap.yaml by command below:
+    `kubectl get secret kafka-chart-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -D`
+5. `kubectl apply -f deployment/kafka-configmap.yaml` deploy kafka environtment.
+6. `kubectl apply -f deployment/postgres.yaml` - Deploy database.
+7. `kubectl apply -f deployment/udaconnect-api-connection.yaml` - deploy connection api.
+8. `kubectl apply -f deployment/udaconnect-api-person.yaml` - deploy person api.
+9. `kubectl apply -f deployment/udaconnect-app.yaml` - deploy frontend.
+10. `kubectl apply -f deployment/udaconnect-kafka-producer.yaml` - deploy frontend.
+11. `sh scripts/run_db_command.sh <POD_NAME>` - Seed your database against the `postgres` pod. (`kubectl get pods` will give you the `POD_NAME`)
 
 Manually applying each of the individual `yaml` files is cumbersome but going through each step provides some context on the content of the starter project. In practice, we would have reduced the number of steps by running the command against a directory to apply of the contents: `kubectl apply -f deployment/`.
 
@@ -153,74 +214,6 @@ Your architecture diagram should focus on the services and how they talk to one 
 ## Tips
 * We can access a running Docker container using `kubectl exec -it <pod_id> sh`. From there, we can `curl` an endpoint to debug network issues.
 * The starter project uses Python Flask. Flask doesn't work well with `asyncio` out-of-the-box. Consider using `multiprocessing` to create threads for asynchronous behavior in a standard Flask application.
-
-###STEP
-1. `helm install my-release oci://registry-1.docker.io/bitnamicharts/kafka` install kafka using helm
-You will see something like after install success:
-    Pulled: registry-1.docker.io/bitnamicharts/kafka:26.0.0
-    Digest: sha256:86c0f492e91b5c7e13ea26b24a3a44ebb8d5fc8d65d81eaa48dd17fd086a7924
-    NAME: kafka-chart
-    LAST DEPLOYED: Wed Oct 18 13:58:37 2023
-    NAMESPACE: default
-    STATUS: deployed
-    REVISION: 1
-    TEST SUITE: None
-    NOTES:
-    CHART NAME: kafka
-    CHART VERSION: 26.0.0
-    APP VERSION: 3.6.0
-
-** Please be patient while the chart is being deployed **
-
-Kafka can be accessed by consumers via port 9092 on the following DNS name from within your cluster:
-
-    kafka-chart.default.svc.cluster.local
-
-Each Kafka broker can be accessed by producers via port 9092 on the following DNS name(s) from within your cluster:
-
-    kafka-chart-controller-0.kafka-chart-controller-headless.default.svc.cluster.local:9092
-    kafka-chart-controller-1.kafka-chart-controller-headless.default.svc.cluster.local:9092
-    kafka-chart-controller-2.kafka-chart-controller-headless.default.svc.cluster.local:9092
-
-The CLIENT listener for Kafka client connections from within your cluster have been configured with the following security settings:
-    - SASL authentication
-
-To connect a client to your Kafka, you need to create the 'client.properties' configuration files with the content below:
-
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=SCRAM-SHA-256
-sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
-    username="user1" \
-    password="$(kubectl get secret kafka-chart-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -d | cut -d , -f 1)";
-
-To create a pod that you can use as a Kafka client run the following commands:
-
-    kubectl run kafka-chart-client --restart='Never' --image docker.io/bitnami/kafka:3.6.0-debian-11-r0 --namespace default --command -- sleep infinity
-    kubectl cp --namespace default /path/to/client.properties kafka-chart-client:/tmp/client.properties
-    kubectl exec --tty -i kafka-chart-client --namespace default -- bash
-
-    PRODUCER:
-        kafka-console-producer.sh \
-            --producer.config /tmp/client.properties \
-            --broker-list kafka-chart-controller-0.kafka-chart-controller-headless.default.svc.cluster.local:9092,kafka-chart-controller-1.kafka-chart-controller-headless.default.svc.cluster.local:9092,kafka-chart-controller-2.kafka-chart-controller-headless.default.svc.cluster.local:9092 \
-            --topic location-data
-
-    CONSUMER:
-        kafka-console-consumer.sh \
-            --consumer.config /tmp/client.properties \
-            --bootstrap-server kafka-chart.default.svc.cluster.local:9092 \
-            --topic location-data \
-            --from-beginning
-2. `kubectl apply -f deployment/db-configmap.yaml` deploy database environment.
-3. `kubectl apply -f deployment/db-secret.yaml` deploy database secret.
-4. Update KAFKA_PASSWORD at kafka-configmap.yaml by command below:
-    `kubectl get secret kafka-chart-user-passwords --namespace default -o jsonpath='{.data.client-passwords}' | base64 -D`
-5. `kubectl apply -f deployment/kafka-configmap.yaml` deploy kafka environtment.
-6. `kubectl apply -f deployment/postgres.yaml` - Deploy database.
-7. `kubectl apply -f deployment/udaconnect-api-connection.yaml` - deploy connection api.
-8. `kubectl apply -f deployment/udaconnect-api-person.yaml` - deploy person api.
-9. `kubectl apply -f deployment/udaconnect-app.yaml` - deploy frontend.
-10. `kubectl apply -f deployment/udaconnect-kafka-producer.yaml` - deploy frontend.
 
 USEFULL COMMAND:
 `kubectl port-forward svc/postgres 5432:5432`
