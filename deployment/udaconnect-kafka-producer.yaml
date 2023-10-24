@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: udaconnect-kafka-producer
+  name: udaconnect-kafka-producer
+spec:
+  ports:
+  - name: 5005-5005
+    nodePort: 30005
+    port: 5005
+    protocol: TCP
+    targetPort: 5005
+  selector:
+    app: udaconnect-kafka-producer
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: udaconnect-kafka-producer
+  name: udaconnect-kafka-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: udaconnect-kafka-producer
+  template:
+    metadata:
+      labels:
+        app: udaconnect-kafka-producer
+    spec:
+      containers:
+      - image: dinhtin12/kafka-producer:latest
+        name: udaconnect-kafka-producer
+        imagePullPolicy: Always
+        env:
+        - name: TOPIC_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-env
+              key: TOPIC_NAME
+        - name: KAFKA_SERVER
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-env
+              key: KAFKA_SERVER
+        - name: KAFKA_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-env
+              key: KAFKA_PASSWORD
+      restartPolicy: Always

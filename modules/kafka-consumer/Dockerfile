@@ -1,0 +1,13 @@
+FROM python:3.8-slim-buster
+
+WORKDIR /python-docker
+
+COPY requirements.txt requirements.txt
+RUN pip3 install -r requirements.txt
+
+COPY . .
+
+CMD [ "python3", "app.py"]
+
+# docker build -t dinhtin12/kafka-producer modules/kafka-producer/
+# docker run -d -p 5000:5000 --name kafka-producer dinhtin12/kafka-producer:latest

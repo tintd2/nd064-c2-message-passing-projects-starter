@@ -1,0 +1,15 @@
+Architecture Design Decisions
+
+Message techniques: REST APIs, gRPC and Kafka.
+
+Using rest api for passing data from the client app because:
+    - Simplicity: REST API follows a simple and intuitive design, making it easy to understand and implement.
+
+Using gRPC for passing data from the mobile devices because:
+    - Performance: gRPC is known for its high performance and low latency. 
+
+Using Kafka handle the ingested location data. 
+    - Decoupling of Producers and Consumers: 
+    Kafka enables loose coupling between producers and consumers. 
+    Producers can produce data without worrying about who consumes it, and consumers can consume data without worrying about who produces it. 
+    This decoupling allows for flexibility and scalability in the system architecture.

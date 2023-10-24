@@ -1,0 +1,32 @@
+gRPC Documentation
+'''
+message LocationMessage {
+    int32 person_id = 1;
+    string latitude = 2;
+    string longitude = 3;
+}
+'''
+For example:
+'''
+{
+    "person_id": 1,
+    "latitude": "-6.63242719979446",
+    "longitude": "9.4108260616143"
+}
+'''
+The gRPC server is hosted by the 'location-producer' microservice on port 5005.
+
+1.
+
+you can run:
+`kubectl port-forward svc:udaconnect-kafka-producer 5005:5005`
+
+and test gRPC by postman like postman-grcp-screenshot
+
+2. 
+
+you can ssh to pod run location-producer service
+and run python grpc-seed.py
+
+
+
